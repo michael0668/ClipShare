@@ -974,6 +974,45 @@ void main() {
       ]);
     });
 
+    test('uploadFile creates missing parent directories before retrying', () async {
+      const path = '/upload/fallback/files/file.txt';
+      webDavServer.failPutOnce('/clipshare$path');
+      final tempDir = await Directory.systemTemp.createTemp('clipshare_upload_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final localFile = File('${tempDir.path}/source.txt');
+      await localFile.writeAsString('upload');
+
+      expect(
+        await client.uploadFile(path, localFile.path, createDir: true),
+        isTrue,
+      );
+
+      expect(webDavServer.requests, <String>[
+        'PUT /clipshare/upload/fallback/files/file.txt',
+        'MKCOL /clipshare/upload/fallback/files',
+        'PROPFIND /clipshare/upload/fallback/files',
+        'MKCOL /clipshare/upload',
+        'MKCOL /clipshare/upload/fallback',
+        'MKCOL /clipshare/upload/fallback/files',
+        'PUT /clipshare/upload/fallback/files/file.txt',
+      ]);
+    });
+
+    test('uploadFile without createDir keeps direct upload failure', () async {
+      const path = '/upload/no-fallback/file.txt';
+      webDavServer.failPutOnce('/clipshare$path');
+      final tempDir = await Directory.systemTemp.createTemp('clipshare_upload_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final localFile = File('${tempDir.path}/source.txt');
+      await localFile.writeAsString('upload');
+
+      expect(await client.uploadFile(path, localFile.path), isFalse);
+
+      expect(webDavServer.requests, <String>[
+        'PUT /clipshare/upload/no-fallback/file.txt',
+      ]);
+    });
+
     test('returns false when directory fallback succeeds but file retry fails', () async {
       const path = '/retry-fails/parent/file.txt';
       webDavServer.failPut('/clipshare$path');
